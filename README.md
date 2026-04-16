@@ -72,6 +72,8 @@ On launch, you'll be prompted for an authentication key. Once entered, the serve
   Open TCP        2
 ```
 
+![tailway server](docs/server.png)
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--port` | `7000` | Control port (data port = port + 1) |
@@ -99,6 +101,8 @@ Enter your server address and key to connect, then manage tunnels interactively:
 
   ↑↓: select  enter: add  d: delete  q: quit
 ```
+
+![tailway client](docs/client.png)
 
 ---
 

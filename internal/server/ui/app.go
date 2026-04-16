@@ -191,6 +191,7 @@ func (m Model) viewKeyInput() string {
 
 func (m Model) viewRunning() string {
 	var b strings.Builder
+	b.WriteString("\n")
 	b.WriteString("  " + badge(m.debug) + "\n\n")
 
 	clients := 0
