@@ -24,8 +24,8 @@ Commands:
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(1)
+		runSelector()
+		return
 	}
 
 	switch os.Args[1] {
