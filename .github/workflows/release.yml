@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: |
+          GOOS=linux   GOARCH=amd64 go build -ldflags="-s -w" -o dist/tailway-linux-amd64    ./cmd/tailway
+          GOOS=linux   GOARCH=arm64 go build -ldflags="-s -w" -o dist/tailway-linux-arm64    ./cmd/tailway
+          GOOS=darwin  GOARCH=amd64 go build -ldflags="-s -w" -o dist/tailway-darwin-amd64   ./cmd/tailway
+          GOOS=darwin  GOARCH=arm64 go build -ldflags="-s -w" -o dist/tailway-darwin-arm64   ./cmd/tailway
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/tailway-windows-amd64.exe ./cmd/tailway
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
