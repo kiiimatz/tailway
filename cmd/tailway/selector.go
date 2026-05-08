@@ -75,12 +75,13 @@ func (m selectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m selectorModel) View() string {
 	var b strings.Builder
 
-	b.WriteString("\n  " + selBadge() + "\n\n")
+	b.WriteString("\n  " + selBadge() + "  " + selMutedStyle.Render("Self-hosted reverse tunnel.") + "\n\n")
 
 	items := []string{"client", "server"}
+	descs := []string{"reverse host", "tunnel exit"}
 	for i, item := range items {
 		if m.cursor == i {
-			b.WriteString("  " + selBgActive.Render(item) + "\n")
+			b.WriteString("  " + selBgActive.Render(item) + "  " + selMutedStyle.Render(descs[i]) + "\n")
 		} else {
 			b.WriteString("  " + selMutedStyle.Render(item) + "\n")
 		}
