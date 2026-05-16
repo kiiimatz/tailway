@@ -119,34 +119,44 @@ func runUpdate() {
 	}
 }
 
-// replaceFile moves src to dst.
+// replaceFileUnix replaces dst with src safely on Linux/macOS.
 //
-// On same-device: os.Rename is atomic and works even for running executables.
-// On cross-device: we must not open the running binary for writing (ETXTBSY).
-// Instead, unlink the old file first so the running process keeps its inode
-// via its open fd, then write the new file at the now-free path.
-func replaceFile(src, dst string) error {
+// The key constraint: you must NOT open a running executable for writing
+// (causes ETXTBSY). The solution is to unlink the old file first so its
+// inode stays alive for the running process via its open fd, then place
+// the new binary at the now-free path.
+//
+// When dst is in a root-owned directory (e.g. /usr/local/bin), os.Remove
+// will fail with permission denied. In that case we fall back to sudo.
+func replaceFileUnix(src, dst string) error {
+	// Fast path: same filesystem → atomic rename (safe for running binaries).
 	if err := os.Rename(src, dst); err == nil {
 		return nil
 	}
-	// Unlink the destination before writing — avoids ETXTBSY on Linux when
-	// the binary is currently executing.
-	os.Remove(dst)
-	if err := os.Rename(src, dst); err == nil {
-		return nil
+
+	// Cross-device path: unlink first, then place new file.
+	if err := os.Remove(dst); err == nil {
+		// Unlink succeeded — try rename (still cross-device) → copy.
+		if err := os.Rename(src, dst); err == nil {
+			return nil
+		}
+		return copyNewFile(src, dst)
 	}
-	// Still cross-device (src ended up in /tmp on a different fs): copy.
-	return copyFile(src, dst)
+
+	// Remove failed (permission denied on protected dir) — use sudo.
+	return replaceFileWithSudo(src, dst)
 }
 
-func copyFile(src, dst string) error {
+// copyNewFile writes src to dst assuming dst does not exist yet.
+// Uses O_EXCL so we never accidentally truncate a running binary.
+func copyNewFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
 
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0755)
 	if err != nil {
 		return err
 	}
@@ -156,6 +166,25 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Sync()
+}
+
+// replaceFileWithSudo runs `sudo sh -c "rm -f DST && mv SRC DST"`.
+// rm unlinks the running binary (safe); mv then places the new one.
+func replaceFileWithSudo(src, dst string) error {
+	if _, err := exec.LookPath("sudo"); err != nil {
+		return fmt.Errorf("no write permission to %s and sudo is not available", dst)
+	}
+	fmt.Printf("Needs elevated permission to write to %s — running sudo...\n", dst)
+	script := "rm -f " + shellQuote(dst) + " && mv " + shellQuote(src) + " " + shellQuote(dst) + " && chmod 755 " + shellQuote(dst)
+	cmd := exec.Command("sudo", "sh", "-c", script)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // selfUpdate downloads the binary for the current OS/arch and replaces the
@@ -235,16 +264,19 @@ func selfUpdate(tag string) error {
 		if err := os.Rename(exe, old); err != nil {
 			return fmt.Errorf("could not move old binary: %w", err)
 		}
-		if err := replaceFile(tmpPath, exe); err != nil {
-			os.Rename(old, exe)
-			return fmt.Errorf("could not place new binary: %w", err)
+		if err := os.Rename(tmpPath, exe); err != nil {
+			// Cross-device on Windows (unusual but possible).
+			if copyErr := copyNewFile(tmpPath, exe); copyErr != nil {
+				os.Rename(old, exe)
+				return fmt.Errorf("could not place new binary: %w", err)
+			}
 		}
 		fmt.Printf("Updated to %s. Please restart tailway.\n", tag)
 		os.Exit(0)
 	}
 
 	// Unix: replace the binary, then exec the new one.
-	if err := replaceFile(tmpPath, exe); err != nil {
+	if err := replaceFileUnix(tmpPath, exe); err != nil {
 		return fmt.Errorf("could not replace binary: %w", err)
 	}
 
