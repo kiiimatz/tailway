@@ -41,13 +41,40 @@ The client connects to the server over a persistent control channel, registers t
 
 ## Installation
 
+### Linux / macOS
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kiiimatz/tailway/main/install.sh | sh
+```
+
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/kiiimatz/tailway/main/install.ps1 | iex
+```
+
+> Both installers download the latest binary from [Releases](https://github.com/kiiimatz/tailway/releases) and add `tailway` to your PATH automatically.
+
+### Build from source
+
 ```bash
 git clone https://github.com/kiiimatz/tailway.git
 cd tailway
 go build -o tailway ./cmd/tailway
 ```
 
-> Requires Go 1.21+. Pre-built binaries available on [Releases](https://github.com/kiiimatz/tailway/releases).
+> Requires Go 1.21+.
+
+### Auto-update
+
+tailway checks for updates every time it starts. If a new version is available you will be prompted:
+
+```
+  Update available: v0.1.0 → v0.2.0
+  Update now? [y/N]
+```
+
+Pressing `y` downloads and replaces the binary automatically.
 
 ---
 

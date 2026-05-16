@@ -11,6 +11,9 @@ import (
 	serverui "github.com/kiiimatz/tailway/internal/server/ui"
 )
 
+// version is set at build time via -ldflags "-X main.version=vX.Y.Z"
+var version = "dev"
+
 const usage = `tailway — TCP/UDP reverse tunnel proxy
 
 Usage:
@@ -23,6 +26,8 @@ Commands:
 `
 
 func main() {
+	checkAndUpdate()
+
 	if len(os.Args) < 2 {
 		runSelector()
 		return
