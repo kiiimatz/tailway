@@ -19,15 +19,15 @@ const usage = `tailway — TCP/UDP reverse tunnel proxy
 Usage:
   tailway server [--port 7000]
   tailway client
+  tailway update
 
 Commands:
   server   Start the server (prompts for auth key)
   client   Start the interactive client TUI
+  update   Update tailway to the latest release
 `
 
 func main() {
-	checkAndUpdate()
-
 	if len(os.Args) < 2 {
 		runSelector()
 		return
@@ -38,6 +38,8 @@ func main() {
 		runServer(os.Args[2:])
 	case "client":
 		runClient()
+	case "update":
+		runUpdate()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n%s", os.Args[1], usage)
 		os.Exit(1)

@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 const (
@@ -23,8 +25,27 @@ type githubRelease struct {
 	TagName string `json:"tag_name"`
 }
 
-// fetchLatestVersion queries the GitHub releases API and returns the latest
-// tag name (e.g. "v0.2.0"). Returns "" on any error.
+// updateCheckMsg is delivered to the selector when the version check finishes.
+// latestVersion is non-empty only when a newer release exists.
+type updateCheckMsg struct {
+	latestVersion string
+}
+
+// checkUpdateCmd is a Bubble Tea command that fetches the latest GitHub release
+// in the background and returns an updateCheckMsg.
+func checkUpdateCmd() tea.Msg {
+	if version == "dev" {
+		return updateCheckMsg{}
+	}
+	latest := fetchLatestVersion()
+	if latest == "" || !newerVersion(version, latest) {
+		return updateCheckMsg{}
+	}
+	return updateCheckMsg{latestVersion: latest}
+}
+
+// fetchLatestVersion queries the GitHub releases API.
+// Returns "" on any error or network timeout.
 func fetchLatestVersion() string {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -48,7 +69,7 @@ func fetchLatestVersion() string {
 	return rel.TagName
 }
 
-// newerVersion returns true when latest is a strictly newer semver than current.
+// newerVersion reports whether latest is strictly newer than current.
 // Both strings may optionally start with "v".
 func newerVersion(current, latest string) bool {
 	cur := strings.TrimPrefix(current, "v")
@@ -56,7 +77,6 @@ func newerVersion(current, latest string) bool {
 	if cur == "" || lat == "" || cur == lat {
 		return false
 	}
-	// Split into [major, minor, patch]
 	parse := func(s string) [3]int {
 		var a, b, c int
 		fmt.Sscanf(s, "%d.%d.%d", &a, &b, &c)
@@ -74,35 +94,33 @@ func newerVersion(current, latest string) bool {
 	return false
 }
 
-// checkAndUpdate checks for a newer release and, if one exists, prints a notice
-// and offers the user the chance to self-update before the TUI starts.
-func checkAndUpdate() {
+// runUpdate is called by `tailway update`. It runs outside the TUI.
+func runUpdate() {
 	if version == "dev" {
-		return
+		fmt.Fprintln(os.Stderr, "dev build — update not supported")
+		os.Exit(1)
 	}
 
+	fmt.Println("Checking for updates...")
 	latest := fetchLatestVersion()
-	if latest == "" || !newerVersion(version, latest) {
+	if latest == "" {
+		fmt.Fprintln(os.Stderr, "Could not reach GitHub. Check your connection.")
+		os.Exit(1)
+	}
+	if !newerVersion(version, latest) {
+		fmt.Printf("tailway %s is already up to date.\n", version)
 		return
 	}
 
-	fmt.Printf("\n  Update available: %s → %s\n", version, latest)
-	fmt.Printf("  Update now? [y/N] ")
-
-	var answer string
-	fmt.Scanln(&answer)
-	if strings.ToLower(strings.TrimSpace(answer)) != "y" {
-		fmt.Println()
-		return
-	}
-
+	fmt.Printf("Updating %s → %s\n", version, latest)
 	if err := selfUpdate(latest); err != nil {
-		fmt.Fprintf(os.Stderr, "  Update failed: %v\n\n", err)
+		fmt.Fprintf(os.Stderr, "Update failed: %v\n", err)
+		os.Exit(1)
 	}
 }
 
-// selfUpdate downloads the binary for the current OS/arch from the given
-// release tag and replaces the running executable.
+// selfUpdate downloads the binary for the current OS/arch and replaces the
+// running executable.
 func selfUpdate(tag string) error {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
@@ -120,8 +138,7 @@ func selfUpdate(tag string) error {
 	}
 
 	url := fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", githubRepo, tag, assetName)
-
-	fmt.Printf("  Downloading %s...\n", assetName)
+	fmt.Printf("Downloading %s...\n", assetName)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -139,7 +156,6 @@ func selfUpdate(tag string) error {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	// Write to a temp file next to the current executable
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -149,10 +165,9 @@ func selfUpdate(tag string) error {
 		return err
 	}
 
-	dir := filepath.Dir(exe)
-	tmp, err := os.CreateTemp(dir, ".tailway-update-*")
+	// Write new binary to a temp file next to the current one.
+	tmp, err := os.CreateTemp(filepath.Dir(exe), ".tailway-update-*")
 	if err != nil {
-		// Fall back to OS temp dir
 		tmp, err = os.CreateTemp("", ".tailway-update-*")
 		if err != nil {
 			return err
@@ -161,7 +176,7 @@ func selfUpdate(tag string) error {
 	tmpPath := tmp.Name()
 	defer func() {
 		tmp.Close()
-		os.Remove(tmpPath) // no-op if rename succeeded
+		os.Remove(tmpPath)
 	}()
 
 	if _, err := io.Copy(tmp, resp.Body); err != nil {
@@ -173,8 +188,7 @@ func selfUpdate(tag string) error {
 		return err
 	}
 
-	// On Windows we cannot replace a running exe; move it aside and put the
-	// new one in place, then tell the user to restart.
+	// Windows: can't replace a running exe — rename old aside, put new in place.
 	if goos == "windows" {
 		old := exe + ".old"
 		os.Remove(old)
@@ -182,20 +196,19 @@ func selfUpdate(tag string) error {
 			return fmt.Errorf("could not move old binary: %w", err)
 		}
 		if err := os.Rename(tmpPath, exe); err != nil {
-			// Restore
 			os.Rename(old, exe)
 			return fmt.Errorf("could not place new binary: %w", err)
 		}
-		fmt.Printf("  Updated to %s. Please restart tailway.\n\n", tag)
+		fmt.Printf("Updated to %s. Please restart tailway.\n", tag)
 		os.Exit(0)
 	}
 
-	// Unix: atomic rename then exec the new binary
+	// Unix: atomic rename, then exec the new binary.
 	if err := os.Rename(tmpPath, exe); err != nil {
 		return fmt.Errorf("could not replace binary: %w", err)
 	}
 
-	fmt.Printf("  Updated to %s. Restarting...\n\n", tag)
+	fmt.Printf("Updated to %s. Restarting...\n", tag)
 	cmd := exec.Command(exe, os.Args[1:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

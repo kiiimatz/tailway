@@ -15,9 +15,11 @@ var (
 	selAccent   = lipgloss.Color("#3f3f46")
 	selAccentFg = lipgloss.Color("#f4f4f5")
 	selMuted    = lipgloss.Color("#71717a")
+	selUpdate   = lipgloss.Color("#a1a1aa")
 
-	selBgActive  = lipgloss.NewStyle().Background(selAccent).Foreground(selAccentFg).Padding(0, 1)
+	selBgActive   = lipgloss.NewStyle().Background(selAccent).Foreground(selAccentFg).Padding(0, 1)
 	selMutedStyle = lipgloss.NewStyle().Foreground(selMuted)
+	selUpdateStyle = lipgloss.NewStyle().Foreground(selUpdate)
 )
 
 func selBadge() string {
@@ -35,16 +37,21 @@ const (
 )
 
 type selectorModel struct {
-	cursor int // 0=client, 1=server
-	choice selChoice
-	width  int
-	height int
+	cursor        int // 0=client, 1=server
+	choice        selChoice
+	width         int
+	height        int
+	updateVersion string // non-empty when a newer release is available
 }
 
-func (m selectorModel) Init() tea.Cmd { return nil }
+func (m selectorModel) Init() tea.Cmd {
+	return checkUpdateCmd
+}
 
 func (m selectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case updateCheckMsg:
+		m.updateVersion = msg.latestVersion
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -75,7 +82,16 @@ func (m selectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m selectorModel) View() string {
 	var b strings.Builder
 
-	b.WriteString("\n  " + selBadge() + "  " + selMutedStyle.Render("Self-hosted reverse tunnel.") + "\n\n")
+	// Update notice — shown above the badge when a newer release exists.
+	if m.updateVersion != "" {
+		b.WriteString("\n  " + selUpdateStyle.Render(
+			fmt.Sprintf("update available.   tailway update → %s", m.updateVersion),
+		) + "\n")
+	} else {
+		b.WriteString("\n")
+	}
+
+	b.WriteString("  " + selBadge() + "  " + selMutedStyle.Render("Self-hosted reverse tunnel.") + "\n\n")
 
 	items := []string{"client", "server"}
 	descs := []string{"reverse host", "tunnel exit"}
