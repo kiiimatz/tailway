@@ -119,6 +119,32 @@ func runUpdate() {
 	}
 }
 
+// replaceFile moves src to dst. If they are on different filesystems (which
+// makes os.Rename fail with "invalid cross-device link"), it falls back to
+// copying the content over the existing file.
+func replaceFile(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	// Cross-device: open dst for overwrite and stream src into it.
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
+}
+
 // selfUpdate downloads the binary for the current OS/arch and replaces the
 // running executable.
 func selfUpdate(tag string) error {
@@ -165,7 +191,8 @@ func selfUpdate(tag string) error {
 		return err
 	}
 
-	// Write new binary to a temp file next to the current one.
+	// Write new binary to a temp file. Prefer the same directory as the
+	// executable so that rename is atomic (same device). Fall back to /tmp.
 	tmp, err := os.CreateTemp(filepath.Dir(exe), ".tailway-update-*")
 	if err != nil {
 		tmp, err = os.CreateTemp("", ".tailway-update-*")
@@ -195,7 +222,7 @@ func selfUpdate(tag string) error {
 		if err := os.Rename(exe, old); err != nil {
 			return fmt.Errorf("could not move old binary: %w", err)
 		}
-		if err := os.Rename(tmpPath, exe); err != nil {
+		if err := replaceFile(tmpPath, exe); err != nil {
 			os.Rename(old, exe)
 			return fmt.Errorf("could not place new binary: %w", err)
 		}
@@ -203,8 +230,8 @@ func selfUpdate(tag string) error {
 		os.Exit(0)
 	}
 
-	// Unix: atomic rename, then exec the new binary.
-	if err := os.Rename(tmpPath, exe); err != nil {
+	// Unix: replace the binary, then exec the new one.
+	if err := replaceFile(tmpPath, exe); err != nil {
 		return fmt.Errorf("could not replace binary: %w", err)
 	}
 

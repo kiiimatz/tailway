@@ -20,11 +20,13 @@ Usage:
   tailway server [--port 7000]
   tailway client
   tailway update
+  tailway uninstall
 
 Commands:
-  server   Start the server (prompts for auth key)
-  client   Start the interactive client TUI
-  update   Update tailway to the latest release
+  server      Start the server (prompts for auth key)
+  client      Start the interactive client TUI
+  update      Update tailway to the latest release
+  uninstall   Remove tailway from this machine
 `
 
 func main() {
@@ -40,6 +42,8 @@ func main() {
 		runClient()
 	case "update":
 		runUpdate()
+	case "uninstall":
+		runUninstall()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n%s", os.Args[1], usage)
 		os.Exit(1)
