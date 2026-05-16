@@ -146,6 +146,7 @@ func (s *Server) addSocks5Tunnel(client *clientConn, info proto.TunnelInfo) {
 }
 
 // registerTunnel adds a tunnel to the server map and the client's owned list.
+// If UFW is active on this machine, it opens the tunnel's server port.
 func (s *Server) registerTunnel(client *clientConn, t *tunnel) {
 	s.mu.Lock()
 	s.tunnels[t.info.ID] = t
@@ -153,6 +154,18 @@ func (s *Server) registerTunnel(client *clientConn, t *tunnel) {
 	client.tunnels = append(client.tunnels, t.info.ID)
 	client.mu.Unlock()
 	s.mu.Unlock()
+
+	if ufwActive() {
+		proto := ufwProto(t.info.Protocol)
+		port := t.info.ServerPort
+		go func() {
+			if err := ufwAllow(port, proto); err != nil {
+				s.logf("ufw allow %d/%s: %v", port, proto, err)
+			} else {
+				s.logf("ufw allow %d/%s: ok", port, proto)
+			}
+		}()
+	}
 }
 
 // handleDeleteTunnel removes a tunnel owned by the given client.
@@ -199,6 +212,7 @@ func (s *Server) handleListTunnels(client *clientConn) {
 }
 
 // removeTunnel stops the tunnel's listener and removes it from the server map.
+// If UFW is active on this machine, it closes the tunnel's server port.
 func (s *Server) removeTunnel(tunnelID string) {
 	s.mu.Lock()
 	t, ok := s.tunnels[tunnelID]
@@ -218,4 +232,16 @@ func (s *Server) removeTunnel(tunnelID string) {
 		t.udpConn.Close()
 	}
 	s.logf("tunnel removed  id=%s", tunnelID)
+
+	if ufwActive() {
+		proto := ufwProto(t.info.Protocol)
+		port := t.info.ServerPort
+		go func() {
+			if err := ufwDelete(port, proto); err != nil {
+				s.logf("ufw delete %d/%s: %v", port, proto, err)
+			} else {
+				s.logf("ufw delete %d/%s: ok", port, proto)
+			}
+		}()
+	}
 }
