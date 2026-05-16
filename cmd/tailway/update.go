@@ -119,14 +119,27 @@ func runUpdate() {
 	}
 }
 
-// replaceFile moves src to dst. If they are on different filesystems (which
-// makes os.Rename fail with "invalid cross-device link"), it falls back to
-// copying the content over the existing file.
+// replaceFile moves src to dst.
+//
+// On same-device: os.Rename is atomic and works even for running executables.
+// On cross-device: we must not open the running binary for writing (ETXTBSY).
+// Instead, unlink the old file first so the running process keeps its inode
+// via its open fd, then write the new file at the now-free path.
 func replaceFile(src, dst string) error {
 	if err := os.Rename(src, dst); err == nil {
 		return nil
 	}
-	// Cross-device: open dst for overwrite and stream src into it.
+	// Unlink the destination before writing — avoids ETXTBSY on Linux when
+	// the binary is currently executing.
+	os.Remove(dst)
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	// Still cross-device (src ended up in /tmp on a different fs): copy.
+	return copyFile(src, dst)
+}
+
+func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
