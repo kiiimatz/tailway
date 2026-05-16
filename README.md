@@ -30,7 +30,7 @@ The client connects to the server over a persistent control channel, registers t
 
 ## Features
 
-- TCP & UDP tunneling
+- Any Protocols tunneling
 - Key-based authentication
 - Multiple tunnels per client
 - Interactive terminal UI
