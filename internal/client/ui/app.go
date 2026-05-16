@@ -103,11 +103,12 @@ type Model struct {
 	screen screen
 	c      *client.Client
 
-	loginStep  int
-	ipInput    textinput.Model
-	keyInput   textinput.Model
-	loginErr   string
-	connecting bool
+	loginStep   int
+	ipInput     textinput.Model
+	keyInput    textinput.Model
+	loginErr    string
+	connecting  bool
+	autoConnect bool // skip login screen and connect immediately
 
 	tunnels   []*client.TunnelEntry
 	cursor    int
@@ -121,12 +122,11 @@ type Model struct {
 	addErr   string
 }
 
-func NewModel(c *client.Client) Model {
+func NewModel(c *client.Client, autoIP, autoKey string) Model {
 	ip := textinput.New()
 	ip.Placeholder = "192.168.1.100:7000"
 	ip.CharLimit = 128
 	ip.Width = 32
-	ip.Focus()
 
 	key := textinput.New()
 	key.Placeholder = "your-secret-key"
@@ -145,16 +145,36 @@ func NewModel(c *client.Client) Model {
 	sp.CharLimit = 5
 	sp.Width = 10
 
-	return Model{
+	m := Model{
 		c:        c,
 		ipInput:  ip,
 		keyInput: key,
 		cpInput:  cp,
 		spInput:  sp,
 	}
+
+	if autoIP != "" && autoKey != "" {
+		m.ipInput.SetValue(autoIP)
+		m.keyInput.SetValue(autoKey)
+		m.autoConnect = true
+		m.connecting = true
+	} else {
+		m.ipInput.Focus()
+	}
+
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
+	if m.autoConnect {
+		addr := m.ipInput.Value()
+		key := m.keyInput.Value()
+		return tea.Batch(
+			textinput.Blink,
+			tickCmd(),
+			func() tea.Msg { return connectResultMsg{m.c.Connect(addr, key)} },
+		)
+	}
 	return tea.Batch(textinput.Blink, tickCmd())
 }
 

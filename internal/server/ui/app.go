@@ -37,6 +37,8 @@ func badge(debug bool) string {
 type serverStartedMsg struct {
 	err   error
 	errCh <-chan error
+	srv   *server.Server // set when started from autoKey via Init()
+	key   string
 }
 type serverErrMsg struct{ err error }
 type tickMsg struct{}
@@ -57,32 +59,46 @@ type Model struct {
 	height int
 	state  uiState
 
-	port  int
-	debug bool
-	srv   *server.Server
-	key   string
+	port     int
+	debug    bool
+	srv      *server.Server
+	key      string
+	autoKey  string // non-empty → skip key prompt and start immediately
 
 	keyInput textinput.Model
 	keyErr   string
 }
 
-func NewModel(port int, debug bool) Model {
+func NewModel(port int, debug bool, autoKey string) Model {
 	ki := textinput.New()
 	ki.Placeholder = "authentication key"
 	ki.EchoMode = textinput.EchoPassword
 	ki.EchoCharacter = '•'
 	ki.CharLimit = 256
 	ki.Width = 28
-	ki.Focus()
 
-	return Model{
+	m := Model{
 		port:     port,
 		debug:    debug,
 		keyInput: ki,
+		autoKey:  autoKey,
 	}
+
+	if autoKey == "" {
+		m.keyInput.Focus()
+	}
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
+	if m.autoKey != "" {
+		key := m.autoKey
+		s := server.New(key, m.port, m.debug)
+		return tea.Batch(tickCmd(), func() tea.Msg {
+			errCh, err := s.Start()
+			return serverStartedMsg{err: err, errCh: errCh, srv: s, key: key}
+		})
+	}
 	return tea.Batch(textinput.Blink, tickCmd())
 }
 
@@ -115,6 +131,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateKeyInput
 			m.keyInput.Focus()
 			return m, nil
+		}
+		if msg.srv != nil {
+			m.srv = msg.srv
+			m.key = msg.key
 		}
 		m.state = stateRunning
 		return m, tea.Batch(tickCmd(), waitErr(msg.errCh))
@@ -156,7 +176,7 @@ func (m Model) updateKeyInput(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.srv = s
 		return m, func() tea.Msg {
 			errCh, err := s.Start()
-			return serverStartedMsg{err: err, errCh: errCh}
+			return serverStartedMsg{err: err, errCh: errCh, srv: s, key: key}
 		}
 	}
 	var cmd tea.Cmd

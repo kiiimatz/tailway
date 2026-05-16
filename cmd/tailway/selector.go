@@ -42,6 +42,7 @@ type selectorModel struct {
 	width         int
 	height        int
 	updateVersion string // non-empty when a newer release is available
+	useConfig     bool
 }
 
 func (m selectorModel) Init() tea.Cmd {
@@ -116,8 +117,8 @@ func (m selectorModel) View() string {
 
 // ─── runSelector ─────────────────────────────────────────────────────────────
 
-func runSelector() {
-	m := selectorModel{}
+func runSelector(useConfig bool) {
+	m := selectorModel{useConfig: useConfig}
 	p := tea.NewProgram(m,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
@@ -131,9 +132,9 @@ func runSelector() {
 	final := result.(selectorModel)
 	switch final.choice {
 	case selChoiceClient:
-		runClient()
+		runClient(final.useConfig)
 	case selChoiceServer:
-		runServer(nil)
+		runServer(nil, final.useConfig)
 	default:
 		// user pressed q or ctrl+c — exit silently
 	}
