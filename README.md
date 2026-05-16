@@ -2,7 +2,7 @@
 
 # tailway
 
-**Self-hosted reverse tunnel. TCP & UDP.**
+**Self-hosted reverse tunnel. Any Protocols.**
 
 [![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/github/license/kiiimatz/tailway?style=flat)](LICENSE)
