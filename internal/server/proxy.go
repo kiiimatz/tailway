@@ -46,6 +46,9 @@ func (s *Server) serveTCP(t *tunnel, client *clientConn) {
 			}
 			return
 		}
+		if tc, ok := conn.(*net.TCPConn); ok {
+			tc.SetNoDelay(true)
+		}
 		go s.notifyNewTCP(conn, t, client)
 	}
 }
@@ -80,6 +83,9 @@ func (s *Server) notifyNewTCP(extConn net.Conn, t *tunnel, client *clientConn) {
 
 // handleData pairs an incoming client data connection with its pending entry.
 func (s *Server) handleData(conn net.Conn) {
+	if tc, ok := conn.(*net.TCPConn); ok {
+		tc.SetNoDelay(true)
+	}
 	conn.SetDeadline(time.Now().Add(15 * time.Second))
 	msg, err := proto.ReadMessage(conn)
 	if err != nil {

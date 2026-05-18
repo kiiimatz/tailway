@@ -47,6 +47,9 @@ func (c *Client) handleTCP(connID string, clientPort int, bytes *int64) {
 		dataConn.Close()
 		return
 	}
+	if tc, ok := localConn.(*net.TCPConn); ok {
+		tc.SetNoDelay(true)
+	}
 
 	proxyConnsCount(dataConn, localConn, bytes)
 }
@@ -138,6 +141,9 @@ func (c *Client) openDataConn(connID string) (net.Conn, error) {
 		fmt.Sprintf("%s:%d", c.serverHost, dataPort), 10*time.Second)
 	if err != nil {
 		return nil, err
+	}
+	if tc, ok := conn.(*net.TCPConn); ok {
+		tc.SetNoDelay(true)
 	}
 	if err := proto.Send(conn, proto.TypeDataConn,
 		proto.DataConnPayload{ConnID: connID}); err != nil {
